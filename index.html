@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>normal chat</title>
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+  <!-- Login Page -->
+  <div id="loginPage" style="display: flex; height: 100vh; flex-direction: column; justify-content: center; align-items: center;">
+    <h1>normal chat</h1>
+    <p><br>wsg, completly anonymous</p>
+    <br>
+    <h2>Login</h2>
+    <input type="text" id="username" maxlength="16" placeholder="Enter your username (any username works!)">
+    <p style="text-align: center;"><br><i>Username should only contain letters, numbers, underscores(_), and hyphens (-).</i></p>
+    <br>
+    <input type="text" id="roomCode" maxlength="10" placeholder="Enter your room code">
+    <p style="text-align: center;"><br><i>Room Code should only contain letters and numbers. Not case sensitive.</i></p>
+    <br><br>
+    <button id="loginBtn">Join Room</button>
+  </div>
+
+  <!-- Chat Page -->
+  <div id="chatPage" style="display:none;">
+    <h2 id="chatPageInfo" style="text-align: center;">Connecting to server.</h2>
+    <br>
+    <!-- Message container -->
+    <div id="messageBox" style="border:1px solid #ccc; height:300px; overflow-y:auto; padding:10px; margin:10px 0;">
+    </div>
+    <br>
+    <input type="text" id="chatInput" maxlength="500" placeholder="Type your message here. Enter to send, Shift + Enter for a new line." style="width:70%;">
+    <span id="charCount" style="margin-left: 10px;">0 / 500</span>
+  </div>
+
+  <!-- Clientside code -->
+  <script>
+    const loginBtn = document.getElementById("loginBtn");
+    const loginPage = document.getElementById("loginPage");
+    const chatPage = document.getElementById("chatPage");
+    const chatPageInfo = document.getElementById("chatPageInfo");
+    const username = document.getElementById("username");
+    const roomCode = document.getElementById("roomCode");
+    const savedUsername = localStorage.getItem("username");
+    const savedRoomCode = localStorage.getItem("roomCode");
+    const chatInput = document.getElementById("chatInput");
+    const messageBox = document.getElementById("messageBox");
+    const charCount = document.getElementById("charCount");
+    let usernameConfirmed;
+    let roomCodeConfirmed;
+    let socket;
+
+    // Fill in saved info
+    if (savedUsername) username.value = savedUsername;
+    if (savedRoomCode) roomCode.value = savedRoomCode;
+    else roomCode.value = "general";
+
+    // Save info on input
+    username.addEventListener("input", () => localStorage.setItem("username", username.value));
+    roomCode.addEventListener("input", () => localStorage.setItem("roomCode", roomCode.value));
+
+    // Login
+    loginBtn.addEventListener("click", () => {
+      const usernameCheck = /^[a-zA-Z0-9_-]+$/;
+      const roomCodeCheck = /^[a-zA-Z0-9]+$/;
+
+      if (username.value === "" || roomCode.value === ""){
+        alert("Please fill in both fields to login!");
+        return;
+      }
+      if (username.value.length > 16 || roomCode.value.length > 10){
+        alert("Username must be 16 characters or fewer and Room Code must be 10 characters or fewer!");
+        return;
+      }
+      if (!usernameCheck.test(username.value)) {
+        alert("Username can only contain letters, numbers, underscores (_) and hyphens (-).");
+        return;
+      }
+      if (!roomCodeCheck.test(roomCode.value)) {
+        alert("Room Code can only contain letters and numbers.");
+        return;
+      }
+
+      // all ok
+      loginPage.style.display = "none";
+      chatPage.style.display = "block";
+      usernameConfirmed = username.value.trim();
+      roomCodeConfirmed = roomCode.value.toLowerCase();
+      document.title = "normal chat - " + roomCodeConfirmed;
+
+      // Connect to WebSocket server
+      socket = new WebSocket(`wss://intra-chat.onrender.com/ws/${roomCodeConfirmed}`);
+      socket.addEventListener("open", () => {
+        console.log("Connected to server!");
+        socket.send(JSON.stringify({
+          type: "join",
+          username: usernameConfirmed,
+          room: roomCodeConfirmed
+        }));
+      });
+
+      socket.addEventListener("message", (JSONmsg) => {
+        const msg = JSON.parse(JSONmsg.data);
+        if (msg.type === "message") {
+          displayMessage(msg.username, msg.message, msg.timestamp);
+        }
+      });
+
+      chatPageInfo.innerHTML = "normal chat - <i>" + usernameConfirmed + "</i> - Room " + roomCodeConfirmed;
+    });
+
+    // Send message
+    function sendMsg() {
+      if (chatInput.value.trim() === "") return;
+      const msgObj = {
+        type: "message",
+        username: usernameConfirmed,
+        message: chatInput.value.trim(),
+        timestamp: new Date().toISOString(),
+        room: roomCodeConfirmed
+      };
+      socket.send(JSON.stringify(msgObj));
+      chatInput.value = "";
+      charCount.textContent = `0 / 500`;
+      charCount.style.color = "inherit";
+    }
+
+    // Chatbox Enter key
+    chatInput.addEventListener("keydown", (keyPressed) => {
+      if (keyPressed.key === "Enter") {
+        keyPressed.preventDefault();
+        sendMsg();
+      }
+    });
+
+    // Display message
+    function displayMessage(user, content, time) {
+      const msgDiv = document.createElement("div");
+      const timestamp = new Date(time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      const infoSpan = document.createElement("span");
+      infoSpan.innerHTML = `<b>[${timestamp}] ${user}:</b> `;
+      const contentSpan = document.createElement("span");
+      contentSpan.textContent = content;
+      msgDiv.appendChild(infoSpan);
+      msgDiv.appendChild(contentSpan);
+      messageBox.appendChild(msgDiv);
+      messageBox.scrollTop = messageBox.scrollHeight;
+    }
+
+    // Character limit counter
+    const MAX_CHARS = 500;
+    chatInput.addEventListener("input", () => {
+      const currentLength = chatInput.value.length;
+      charCount.textContent = `${currentLength} / ${MAX_CHARS}`;
+      if (currentLength >= MAX_CHARS) charCount.style.color = "red";
+      else if (currentLength >= MAX_CHARS * 0.9) charCount.style.color = "orange";
+      else charCount.style.color = "inherit";
+    });
+  </script>
+</body>
+</html>
